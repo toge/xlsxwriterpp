@@ -13,9 +13,24 @@ using namespace xlsxwriterpp;
 
 namespace {
 
+struct SilentMockBackend {
+  auto write_cell(int, int, CellValue, FormatProperties const&) -> std::expected<void, XlsxError> {
+    return {};
+  }
+  auto write_cell_stored(int, int, detail::StoredCellValue const&, FormatProperties const&) -> std::expected<void, XlsxError> {
+    return {};
+  }
+  auto add_sheet(std::string_view) -> std::expected<void, XlsxError> {
+    return {};
+  }
+  auto save() -> std::expected<void, XlsxError> {
+    return {};
+  }
+};
+
 auto make_int_row(int row, int cols) -> void {
-  auto backend = MockBackend{};
-  auto ws      = Worksheet<MockBackend>{std::move(backend), "test"};
+  auto backend = SilentMockBackend{};
+  auto ws      = Worksheet<SilentMockBackend>{std::move(backend), "test"};
   for (auto c = 0; c < cols; ++c) {
     ws.write(row, c, CellValue{row * cols + c});
   }
@@ -23,8 +38,8 @@ auto make_int_row(int row, int cols) -> void {
 }
 
 auto make_string_row(int row, int cols) -> void {
-  auto backend = MockBackend{};
-  auto ws      = Worksheet<MockBackend>{std::move(backend), "test"};
+  auto backend = SilentMockBackend{};
+  auto ws      = Worksheet<SilentMockBackend>{std::move(backend), "test"};
   auto const s = std::string{"hello_xlsxwriterpp_"};
   for (auto c = 0; c < cols; ++c) {
     ws.write(row, c, CellValue{std::string_view{s}});
@@ -33,8 +48,8 @@ auto make_string_row(int row, int cols) -> void {
 }
 
 auto make_formatted_int_row(int row, int cols) -> void {
-  auto backend = MockBackend{};
-  auto ws      = Worksheet<MockBackend>{std::move(backend), "test"};
+  auto backend = SilentMockBackend{};
+  auto ws      = Worksheet<SilentMockBackend>{std::move(backend), "test"};
   auto fmt     = FormatProperties{};
   fmt.bold     = true;
   for (auto c = 0; c < cols; ++c) {
@@ -44,8 +59,8 @@ auto make_formatted_int_row(int row, int cols) -> void {
 }
 
 auto write_all_then_flush(int rows, int cols) -> void {
-  auto backend = MockBackend{};
-  auto ws      = Worksheet<MockBackend>{std::move(backend), "test"};
+  auto backend = SilentMockBackend{};
+  auto ws      = Worksheet<SilentMockBackend>{std::move(backend), "test"};
   for (auto r = 0; r < rows; ++r) {
     for (auto c = 0; c < cols; ++c) {
       ws.write(r, c, CellValue{r * cols + c});
