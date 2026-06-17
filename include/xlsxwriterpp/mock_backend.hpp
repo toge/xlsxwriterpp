@@ -81,6 +81,11 @@ public:
     return {};
   }
 
+  auto write_cell_stored(int row, int col, detail::StoredCellValue const& val, FormatProperties const& fmt)
+    -> std::expected<void, XlsxError> {
+    return write_cell(row, col, detail::to_cell_value(val), fmt);
+  }
+
   /**
    * @brief シートを追加し、以降の write_cell をそのシートへ向ける。
    *
