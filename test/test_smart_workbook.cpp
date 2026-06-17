@@ -25,7 +25,7 @@ TEST_CASE("Workbook add_sheet") {
   }
 
   SECTION("duplicate sheet name") {
-    wb.add_sheet("Sheet1");
+    REQUIRE(wb.add_sheet("Sheet1").has_value());
     auto res = wb.add_sheet("Sheet1");
     REQUIRE_FALSE(res.has_value());
     REQUIRE(res.error() == XlsxError::DuplicateSheetName);
@@ -35,8 +35,8 @@ TEST_CASE("Workbook add_sheet") {
 TEST_CASE("Workbook get_sheet by name") {
   MockBackend backend;
   Workbook<MockBackend> wb{std::move(backend)};
-  wb.add_sheet("Alpha");
-  wb.add_sheet("Beta");
+  REQUIRE(wb.add_sheet("Alpha").has_value());
+  REQUIRE(wb.add_sheet("Beta").has_value());
 
   SECTION("existing sheet") {
     auto res = wb.get_sheet("Alpha");
@@ -55,8 +55,8 @@ TEST_CASE("Workbook get_sheet by name") {
 TEST_CASE("Workbook get_sheet by index") {
   MockBackend backend;
   Workbook<MockBackend> wb{std::move(backend)};
-  wb.add_sheet("First");
-  wb.add_sheet("Second");
+  REQUIRE(wb.add_sheet("First").has_value());
+  REQUIRE(wb.add_sheet("Second").has_value());
 
   SECTION("valid index") {
     auto res = wb.get_sheet(0);
@@ -82,9 +82,9 @@ TEST_CASE("Workbook sheet_count") {
   Workbook<MockBackend> wb{std::move(backend)};
 
   REQUIRE(wb.sheet_count() == 0);
-  wb.add_sheet("A");
+  REQUIRE(wb.add_sheet("A").has_value());
   REQUIRE(wb.sheet_count() == 1);
-  wb.add_sheet("B");
+  REQUIRE(wb.add_sheet("B").has_value());
   REQUIRE(wb.sheet_count() == 2);
 }
 
@@ -95,8 +95,8 @@ TEST_CASE("Workbook flush_all_sheets") {
   auto* ws1 = *wb.add_sheet("Sheet1");
   auto* ws2 = *wb.add_sheet("Sheet2");
 
-  ws1->write(0, 0, 10);
-  ws2->write(0, 0, 20);
+  REQUIRE(ws1->write(0, 0, 10).has_value());
+  REQUIRE(ws2->write(0, 0, 20).has_value());
 
   auto res = wb.flush_all_sheets();
   REQUIRE(res.has_value());
@@ -105,7 +105,7 @@ TEST_CASE("Workbook flush_all_sheets") {
 TEST_CASE("Workbook save") {
   MockBackend backend;
   Workbook<MockBackend> wb{std::move(backend)};
-  wb.add_sheet("Test");
+  REQUIRE(wb.add_sheet("Test").has_value());
 
   auto res = wb.save();
   REQUIRE(res.has_value());

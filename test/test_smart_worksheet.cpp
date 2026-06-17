@@ -59,14 +59,14 @@ TEST_CASE("Worksheet flush_row") {
   }
 
   SECTION("flush row with data") {
-    ws.write(0, 0, 42);
-    ws.write(0, 1, 100);
+    REQUIRE(ws.write(0, 0, 42).has_value());
+    REQUIRE(ws.write(0, 1, 100).has_value());
     auto res = ws.flush_row(0);
     REQUIRE(res.has_value());
   }
 
   SECTION("row order violation") {
-    ws.flush_row(5);
+    REQUIRE(ws.flush_row(5).has_value());
     auto res = ws.flush_row(3);
     REQUIRE_FALSE(res.has_value());
     REQUIRE(res.error() == XlsxError::RowOrderViolation);
@@ -78,9 +78,9 @@ TEST_CASE("Worksheet flush_all") {
   Worksheet<MockBackend> ws{std::move(backend), "TestSheet"};
 
   SECTION("flush_all with multiple rows") {
-    ws.write(0, 0, 10);
-    ws.write(1, 0, 20);
-    ws.write(2, 0, 30);
+    REQUIRE(ws.write(0, 0, 10).has_value());
+    REQUIRE(ws.write(1, 0, 20).has_value());
+    REQUIRE(ws.write(2, 0, 30).has_value());
     auto res = ws.flush_all();
     REQUIRE(res.has_value());
   }
@@ -101,11 +101,41 @@ TEST_CASE("Worksheet multiple columns in row") {
   MockBackend backend;
   Worksheet<MockBackend> ws{std::move(backend), "MultiCol"};
 
-  ws.write(0, 0, "A");
-  ws.write(0, 1, "B");
-  ws.write(0, 2, "C");
-  ws.write(0, 3, "D");
+  REQUIRE(ws.write(0, 0, "A").has_value());
+  REQUIRE(ws.write(0, 1, "B").has_value());
+  REQUIRE(ws.write(0, 2, "C").has_value());
+  REQUIRE(ws.write(0, 3, "D").has_value());
 
   auto res = ws.flush_row(0);
   REQUIRE(res.has_value());
+}
+
+TEST_CASE("Worksheet cell overwrite", "[worksheet]") {
+  MockBackend backend;
+  Worksheet<MockBackend> ws{std::move(backend), "OverwriteSheet"};
+
+  SECTION("overwrite value") {
+    REQUIRE(ws.write(0, 0, "first").has_value());
+    REQUIRE(ws.write(0, 0, "second").has_value());
+    auto res = ws.flush_row(0);
+    REQUIRE(res.has_value());
+  }
+
+  SECTION("format then write") {
+    FormatProperties fmt;
+    fmt.bold = true;
+    REQUIRE(ws.format(0, 0, fmt).has_value());
+    REQUIRE(ws.write(0, 0, 42).has_value());
+    auto res = ws.flush_row(0);
+    REQUIRE(res.has_value());
+  }
+
+  SECTION("write then format") {
+    REQUIRE(ws.write(0, 0, 42).has_value());
+    FormatProperties fmt;
+    fmt.italic = true;
+    REQUIRE(ws.format(0, 0, fmt).has_value());
+    auto res = ws.flush_row(0);
+    REQUIRE(res.has_value());
+  }
 }
