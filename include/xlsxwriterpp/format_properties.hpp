@@ -88,6 +88,17 @@ struct FormatProperties {
       v_align = other.v_align;
     }
   }
+
+  [[nodiscard]] auto has_any() const noexcept -> bool {
+    return !font_name.empty()
+        || font_size != 0.0
+        || bold
+        || italic
+        || font_color.has_value()
+        || bg_color.has_value()
+        || h_align != HorizontalAlign::Default
+        || v_align != VerticalAlign::Default;
+  }
 };
 
 } // namespace xlsxwriterpp
