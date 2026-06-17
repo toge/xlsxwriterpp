@@ -24,15 +24,17 @@ namespace xlsxwriterpp {
  */
 template <typename T>
 concept XlsxBackend = requires(
-  T            backend,
-  int          row,
-  int          col,
-  CellValue    val,
-  FormatProperties fmt,
-  std::string_view name) {
-  { backend.write_cell(row, col, val, fmt) } -> std::same_as<std::expected<void, XlsxError>>;
-  { backend.add_sheet(name) }                -> std::same_as<std::expected<void, XlsxError>>;
-  { backend.save() }                         -> std::same_as<std::expected<void, XlsxError>>;
+  T                     backend,
+  int                   row,
+  int                   col,
+  CellValue             val,
+  detail::StoredCellValue stored_val,
+  FormatProperties      fmt,
+  std::string_view      name) {
+  { backend.write_cell(row, col, val, fmt) }         -> std::same_as<std::expected<void, XlsxError>>;
+  { backend.write_cell_stored(row, col, stored_val, fmt) } -> std::same_as<std::expected<void, XlsxError>>;
+  { backend.add_sheet(name) }                        -> std::same_as<std::expected<void, XlsxError>>;
+  { backend.save() }                                 -> std::same_as<std::expected<void, XlsxError>>;
 };
 
 } // namespace xlsxwriterpp
