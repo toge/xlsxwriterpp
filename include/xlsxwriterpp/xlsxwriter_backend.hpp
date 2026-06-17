@@ -97,9 +97,8 @@ public:
       return std::unexpected(XlsxError::BackendWriteError);
     }
 
-    // libxlsxwriter はスレッドセーフでないため、共有 mutex でフォーマット作成を保護
     auto _  = std::lock_guard{state_mutex_};
-    auto* f = apply_format(fmt);
+    auto* f = fmt.has_any() ? apply_format(fmt) : nullptr;
 
     auto const lrow = static_cast<lxw_row_t>(row);
     auto const lcol = static_cast<lxw_col_t>(col);
@@ -122,8 +121,52 @@ public:
       val);
 
     return err == LXW_NO_ERROR
-             ? std::expected<void, XlsxError>{}
-             : std::unexpected(XlsxError::BackendWriteError);
+              ? std::expected<void, XlsxError>{}
+              : std::unexpected(XlsxError::BackendWriteError);
+  }
+
+  /**
+   * @brief 保存済みセル値に値と書式を書き込む（コピー削減版）。
+   *
+   * std::string 等の型を直接扱うことで、CellValue 経由の再コピーを避ける。
+   *
+   * @param row 行インデックス
+   * @param col 列インデックス
+   * @param val 保存済みセル値
+   * @param fmt 書式プロパティ
+   * @return 成功時 void、失敗時 BackendWriteError
+   */
+  auto write_cell_stored(int row, int col, detail::StoredCellValue const& val, FormatProperties const& fmt)
+    -> std::expected<void, XlsxError> {
+    if (!worksheet_) {
+      return std::unexpected(XlsxError::BackendWriteError);
+    }
+
+    auto _  = std::lock_guard{state_mutex_};
+    auto* f = fmt.has_any() ? apply_format(fmt) : nullptr;
+
+    auto const lrow = static_cast<lxw_row_t>(row);
+    auto const lcol = static_cast<lxw_col_t>(col);
+
+    auto const err = std::visit(
+      [&]<typename V>(V const& v) -> lxw_error {
+        if constexpr (std::is_same_v<V, std::monostate>) {
+          return worksheet_write_blank(worksheet_, lrow, lcol, f);
+        } else if constexpr (std::is_same_v<V, int>) {
+          return worksheet_write_number(worksheet_, lrow, lcol, static_cast<double>(v), f);
+        } else if constexpr (std::is_same_v<V, double>) {
+          return worksheet_write_number(worksheet_, lrow, lcol, v, f);
+        } else if constexpr (std::is_same_v<V, std::string>) {
+          return worksheet_write_string(worksheet_, lrow, lcol, v.c_str(), f);
+        } else if constexpr (std::is_same_v<V, bool>) {
+          return worksheet_write_boolean(worksheet_, lrow, lcol, v ? 1 : 0, f);
+        }
+      },
+      val);
+
+    return err == LXW_NO_ERROR
+              ? std::expected<void, XlsxError>{}
+              : std::unexpected(XlsxError::BackendWriteError);
   }
 
   /**
@@ -169,16 +212,7 @@ private:
    * @return 設定済みの lxw_format*（設定がない場合は nullptr）
    */
   [[nodiscard]] auto apply_format(FormatProperties const& fmt) const -> lxw_format* {
-    // すべてデフォルトなら nullptr を返して xlsxwriter 内部のデフォルトを使う
-    bool const has_fmt = !fmt.font_name.empty()
-                         || fmt.font_size != 0.0
-                         || fmt.bold
-                         || fmt.italic
-                         || fmt.font_color.has_value()
-                         || fmt.bg_color.has_value()
-                         || fmt.h_align != HorizontalAlign::Default
-                         || fmt.v_align != VerticalAlign::Default;
-    if (!has_fmt) {
+    if (!fmt.has_any()) {
       return nullptr;
     }
 
