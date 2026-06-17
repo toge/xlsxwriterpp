@@ -14,7 +14,7 @@
 #include <ranges>
 #include <string>
 #include <string_view>
-#include <unordered_map>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -23,40 +23,16 @@ namespace xlsxwriterpp {
 namespace detail {
 
 /**
- * @brief pending セルのキー型（行・列インデックスの組）。
- */
-struct CellKey {
-  int row; ///< 行インデックス
-  int col; ///< 列インデックス
-
-  [[nodiscard]] auto operator==(CellKey const& other) const noexcept -> bool {
-    return row == other.row && col == other.col;
-  }
-};
-
-/**
- * @brief CellKey のハッシュ関数オブジェクト。
- *
- * Knuth の乗算ハッシュを用いて衝突を低減する。
- */
-struct CellKeyHash {
-  [[nodiscard]] auto operator()(CellKey const& key) const noexcept -> std::size_t {
-    auto const h1 = std::hash<int>{}(key.row);
-    auto const h2 = std::hash<int>{}(key.col);
-    // 乗算ハッシュで分散を向上
-    return h1 ^ (h2 * 2654435761ULL);
-  }
-};
-
-/**
  * @brief pending セルの内部表現。
  *
- * 値（nullopt = 書式のみ）と書式を保持する。
+ * 行、列、値、および書式を保持する。
  * 文字列は StoredCellValue 内の std::string で所有権を管理する。
  */
-struct PendingCell {
-  std::optional<StoredCellValue> value;  ///< セル値（nullopt = 書式のみ設定）
-  FormatProperties               format; ///< セル書式プロパティ
+struct CellRecord {
+  int             row;
+  int             col;
+  StoredCellValue value;
+  FormatProperties format;
 };
 
 } // namespace detail
@@ -129,7 +105,7 @@ public:
     -> std::expected<void, XlsxError> {
     auto const stripe = stripe_index(row);
     auto _            = std::lock_guard{stripe_mutexes_[stripe]};
-    auto& cell        = get_or_create_cell(row, col);
+    auto& cell        = find_or_create_cell(row, col);
     cell.value        = detail::to_stored(val);
     return {};
   }
@@ -149,7 +125,7 @@ public:
     -> std::expected<void, XlsxError> {
     auto const stripe = stripe_index(row);
     auto _            = std::lock_guard{stripe_mutexes_[stripe]};
-    auto& cell        = get_or_create_cell(row, col);
+    auto& cell        = find_or_create_cell(row, col);
     cell.value        = detail::to_stored(val);
     cell.format.merge(fmt);
     return {};
@@ -167,7 +143,7 @@ public:
     -> std::expected<void, XlsxError> {
     auto const stripe = stripe_index(row);
     auto _            = std::lock_guard{stripe_mutexes_[stripe]};
-    auto& cell        = get_or_create_cell(row, col);
+    auto& cell        = find_or_create_cell(row, col);
     cell.format.merge(fmt);
     return {};
   }
@@ -222,8 +198,8 @@ private:
   Backend     backend_;    ///< このシートのバックエンドインスタンス
   std::string sheet_name_; ///< シート名
 
-  /// pending セルのマップ: row → (col → PendingCell)
-  std::unordered_map<int, std::unordered_map<int, detail::PendingCell>> pending_rows_;
+  /// pending セルのベクトル（(row, col) 昇順ソート済み）
+  std::vector<detail::CellRecord> pending_;
 
   /// ストライプロック配列（行インデックス % STRIPE_COUNT でインデックス決定）
   mutable std::array<std::mutex, STRIPE_COUNT> stripe_mutexes_;
@@ -242,14 +218,31 @@ private:
   }
 
   /**
-   * @brief 指定セルの PendingCell を取得または生成する（ストライプロック取得済みが前提）。
+   * @brief 指定セルの CellRecord を取得または生成する（ストライプロック取得済みが前提）。
    *
    * @param row 行インデックス
    * @param col 列インデックス
-   * @return PendingCell への参照
+   * @return CellRecord への参照
    */
-  auto get_or_create_cell(int row, int col) -> detail::PendingCell& {
-    return pending_rows_[row][col];
+  auto find_or_create_cell(int row, int col) -> detail::CellRecord& {
+    // Append-at-end fast path（連続書き込みで O(1)）
+    if (pending_.empty()
+        || std::tie(row, col) > std::tie(pending_.back().row, pending_.back().col)) {
+      return pending_.emplace_back(row, col, std::monostate{}, FormatProperties{});
+    }
+
+    auto it = std::ranges::lower_bound(
+      pending_,
+      detail::CellRecord{row, col, std::monostate{}, FormatProperties{}},
+      [](detail::CellRecord const& a, detail::CellRecord const& b) {
+        return std::tie(a.row, a.col) < std::tie(b.row, b.col);
+      });
+
+    if (it != pending_.end() && it->row == row && it->col == col) {
+      return *it;
+    }
+
+    return *pending_.emplace(it, row, col, std::monostate{}, FormatProperties{});
   }
 
   /**
@@ -266,7 +259,7 @@ private:
   }
 
   /**
-   * @brief 指定行の pending セルを列順にバックエンドへ書き込む（ロック取得済みが前提）。
+   * @brief 指定行の pending セルをバックエンドへ書き込む（ロック取得済みが前提）。
    *
    * 書き込み完了後に pending エントリを erase してメモリを解放する。
    *
@@ -274,34 +267,29 @@ private:
    * @return 成功時 void、BackendWriteError 時はエラー
    */
   auto flush_row_locked(int row) -> std::expected<void, XlsxError> {
-    auto row_it = pending_rows_.find(row);
-    if (row_it == pending_rows_.end()) {
-      return {}; // この行に pending セルなし（正常）
+    // binary search で row の先頭を特定
+    auto it = std::lower_bound(
+      pending_.begin(), pending_.end(), row,
+      [](detail::CellRecord const& c, int r) { return c.row < r; });
+
+    if (it == pending_.end() || it->row != row) {
+      return {}; // この行に pending セルなし
     }
 
-    auto& col_map = row_it->second;
-
-    // 列インデックスを昇順ソート
-    auto sorted_cols = std::vector<int>{};
-    sorted_cols.reserve(col_map.size());
-    for (auto const& [col, _cell] : col_map) {
-      sorted_cols.push_back(col);
-    }
-    std::ranges::sort(sorted_cols);
-
-    // 各セルをバックエンドへ転送
-    for (auto const col : sorted_cols) {
-      auto const& cell = col_map.at(col);
-      auto const  cv   = cell.value
-                           ? detail::to_cell_value(*cell.value)
-                           : CellValue{std::monostate{}};
-      if (auto res = backend_.write_cell(row, col, cv, cell.format); !res) {
-        return std::unexpected(XlsxError::BackendWriteError);
+    // 同じ行のセルを連続で flush
+    auto first = it;
+    while (it != pending_.end() && it->row == row) {
+      if (it->value.index() != 0  // monostate 以外
+          || it->format.has_any()) {
+        if (auto res = backend_.write_cell_stored(it->row, it->col, it->value, it->format); !res) {
+          return std::unexpected(XlsxError::BackendWriteError);
+        }
       }
+      ++it;
     }
 
-    // フラッシュ済みエントリを解放してメモリを返却
-    pending_rows_.erase(row_it);
+    // flush 済み行を erase（メモリ解放 + 次回の binary search 範囲縮小）
+    pending_.erase(first, it);
     return {};
   }
 
@@ -321,22 +309,21 @@ private:
       locks.emplace_back(stripe_mutexes_[i]);
     }
 
-    // 全 pending 行を昇順に収集
-    auto all_rows = std::vector<int>{};
-    all_rows.reserve(pending_rows_.size());
-    for (auto const& [row, _cols] : pending_rows_) {
-      all_rows.push_back(row);
-    }
-    std::ranges::sort(all_rows);
-
-    // 各行を順にフラッシュ
-    for (auto const row : all_rows) {
-      if (auto res = flush_row_locked(row); !res) {
-        return res;
+    // 全セルを逐次 flush
+    auto current_row = -1;
+    for (auto const& cell : pending_) {
+      if (cell.row != current_row) {
+        update_last_flushed(cell.row);
+        current_row = cell.row;
       }
-      update_last_flushed(row);
+      if (cell.value.index() != 0 || cell.format.has_any()) {
+        if (auto res = backend_.write_cell_stored(cell.row, cell.col, cell.value, cell.format); !res) {
+          return std::unexpected(XlsxError::BackendWriteError);
+        }
+      }
     }
 
+    pending_.clear();
     return {};
   }
 };
