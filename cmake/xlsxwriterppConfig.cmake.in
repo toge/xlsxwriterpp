@@ -1,0 +1,24 @@
+@PACKAGE_INIT@
+
+# xlsxwriterpp が依存するライブラリを自動的に find_dependency で解決する。
+# これにより利用側が改めて find_package を呼ぶ手間を省く。
+
+include(CMakeFindDependencyMacro)
+
+# libxlsxwriter（必須）
+find_dependency(xlsxwriter CONFIG QUIET)
+if(NOT xlsxwriter_FOUND)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(XLSXWRITER IMPORTED_TARGET xlsxwriter)
+    if(XLSXWRITER_FOUND)
+      add_library(xlsxwriter::xlsxwriter ALIAS PkgConfig::XLSXWRITER)
+    endif()
+  endif()
+endif()
+
+# エクスポートされたターゲットを読み込む
+include("${CMAKE_CURRENT_LIST_DIR}/xlsxwriterppTargets.cmake")
+
+# パッケージの整合性チェック
+check_required_components(xlsxwriterpp)
