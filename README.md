@@ -102,28 +102,18 @@ wb.save(); // stdout に全操作がデバッグ出力される
 
 ## アーキテクチャ
 
-```
-┌────────────────────────────┐
-│  Workbook<Backend>                                     │
-│  ・add_sheet(name)                                     │
-│  ・get_sheet(name/index)                               │
-│  ・flush_all_sheets()                                  │
-│  ・save()                                              │
-├────────────────────────────┤
-│  Worksheet<Backend>                                    │
-│  ・write(row, col, val)                                │
-│  ・write(row, col, val, format)                        │
-│  ・write(row, col, format)                             │
-│  ・flush_row(row)                                      │
-│  ・flush_all()                                         │
-├────────────────────────────┤
-│  バックエンド (XlsxBacken Concept)                     │
-│  ┌──────────┐  ┌───────────┐  │
-│  │ XlsxWriter         │  │ MockBackend          │  │
-│  │ Backend            │  │ (デバッグ出力)       │  │
-│  │ (実Excel出力)      │  │                      │  │
-│  └──────────┘  └───────────┘  │
-└────────────────────────────┘
+```mermaid
+flowchart TD
+    WB["<b>Workbook&lt;Backend&gt;</b><br>add_sheet(name)<br>get_sheet(name/index)<br>flush_all_sheets()<br>save()"]
+    WS["<b>Worksheet&lt;Backend&gt;</b><br>write(row, col, val)<br>write(row, col, val, format)<br>write(row, col, format)<br>flush_row(row)<br>flush_all()"]
+    BE["<b>Backend (XlsxBackend Concept)</b>"]
+    XW["XlsxWriterBackend<br>(実Excel出力)"]
+    MB["MockBackend<br>(デバッグ出力)"]
+
+    WB --> WS
+    WS --> BE
+    BE --> XW
+    BE --> MB
 ```
 
 ### バックエンドシステム
@@ -134,17 +124,20 @@ wb.save(); // stdout に全操作がデバッグ出力される
 
 ## プロジェクト構成
 
-```
-include/xlsxwriterpp/
-├── xlsxwriterpp.hpp          # 統合インクルードヘッダ
-├── workbook.hpp              # Workbook テンプレートクラス
-├── worksheet.hpp             # Worksheet テンプレートクラス（スパース遅延バッファ）
-├── cell_value.hpp            # CellValue / StoredCellValue 型定義
-├── format_properties.hpp     # FormatProperties / 配置列挙型
-├── xlsx_backend_concept.hpp  # XlsxBackend コンセプト定義
-├── xlsx_error.hpp            # XlsxError エラーコード列挙型
-├── xlsxwriter_backend.hpp    # libxlsxwriter バックエンド実装
-└── mock_backend.hpp          # モックバックエンド実装
+```mermaid
+flowchart LR
+    subgraph DIR["include/xlsxwriterpp/"]
+        direction TB
+        A["xlsxwriterpp.hpp - 統合インクルードヘッダ"]
+        B["workbook.hpp - Workbook テンプレートクラス"]
+        C["worksheet.hpp - Worksheet テンプレートクラス（スパース遅延バッファ）"]
+        D["cell_value.hpp - CellValue / StoredCellValue 型定義"]
+        E["format_properties.hpp - FormatProperties / 配置列挙型"]
+        F["xlsx_backend_concept.hpp - XlsxBackend コンセプト定義"]
+        G["xlsx_error.hpp - XlsxError エラーコード列挙型"]
+        H["xlsxwriter_backend.hpp - libxlsxwriter バックエンド実装"]
+        I["mock_backend.hpp - モックバックエンド実装"]
+    end
 ```
 
 ## ライセンス
