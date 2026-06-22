@@ -54,9 +54,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ──────────────────────────────────────────────────────────────
 # 依存ライブラリの検索
 # ──────────────────────────────────────────────────────────────
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(XLSXWRITER IMPORTED_TARGET xlsxwriter)
-add_library(xlsxwriter::xlsxwriter ALIAS PkgConfig::XLSXWRITER)
+find_package(xlsxwriter CONFIG QUIET)
+if(NOT xlsxwriter_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(XLSXWRITER IMPORTED_TARGET xlsxwriter)
+    add_library(xlsxwriter::xlsxwriter ALIAS PkgConfig::XLSXWRITER)
+endif()
 
 # ──────────────────────────────────────────────────────────────
 # INTERFACE ライブラリターゲットの定義
