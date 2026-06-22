@@ -84,7 +84,7 @@ endif()
 add_library(xlsxwriterpp INTERFACE)
 add_library(xlsxwriterpp::xlsxwriterpp ALIAS xlsxwriterpp)
 
-target_compile_features(xlsxwriterpp INTERFACE cxx_std_26)
+target_compile_features(xlsxwriterpp INTERFACE cxx_std_23)
 
 target_include_directories(xlsxwriterpp
   INTERFACE
