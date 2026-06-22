@@ -56,9 +56,26 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ──────────────────────────────────────────────────────────────
 find_package(xlsxwriter CONFIG QUIET)
 if(NOT xlsxwriter_FOUND)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(XLSXWRITER IMPORTED_TARGET xlsxwriter)
-    add_library(xlsxwriter::xlsxwriter ALIAS PkgConfig::XLSXWRITER)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(XLSXWRITER IMPORTED_TARGET xlsxwriter)
+    endif()
+    if(XLSXWRITER_FOUND)
+        add_library(xlsxwriter::xlsxwriter ALIAS PkgConfig::XLSXWRITER)
+    else()
+        find_path(XLSXWRITER_INCLUDE_DIR xlsxwriter.h)
+        find_library(XLSXWRITER_LIBRARY xlsxwriter)
+        if(NOT XLSXWRITER_INCLUDE_DIR OR NOT XLSXWRITER_LIBRARY)
+            message(FATAL_ERROR "\nxlsxwriter not found.\n"
+                "  Linux:   apt-get install libxlsxwriter-dev\n"
+                "  macOS:   brew install libxlsxwriter\n"
+                "  Windows: vcpkg install libxlsxwriter pkgconf")
+        endif()
+        add_library(xlsxwriter::xlsxwriter UNKNOWN IMPORTED)
+        set_target_properties(xlsxwriter::xlsxwriter PROPERTIES
+            IMPORTED_LOCATION "${XLSXWRITER_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${XLSXWRITER_INCLUDE_DIR}")
+    endif()
 endif()
 
 # ──────────────────────────────────────────────────────────────
